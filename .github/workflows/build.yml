@@ -66,6 +66,7 @@ jobs:
           )
           x = x.replace('<application', perms + '<application', 1)
           recv = (
+              '\n    <meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false"/>'
               '\n    <receiver android:exported="false" '
               'android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"/>\n'
               '    <receiver android:exported="false" '
@@ -98,4 +99,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: countdown-apk
-          path: app_build/build/app/outputs/flutter-apk/app-release.apk
+          path: app_build/build/app/outputs/flutter-apk/app-release.apk        
