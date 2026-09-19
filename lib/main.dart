@@ -1,4 +1,4 @@
-import 'dart:async';
+                   import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -141,9 +141,14 @@ class CountdownItem {
 // ---------------------------------------------------------------
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initNotifications();
-  await scheduleHourlyReminder();
+  // আগে স্ক্রিন দেখাও, তারপর নোটিফিকেশন সেটআপ (সমস্যা হলে অ্যাপ আটকাবে না)
   runApp(const CountdownApp());
+  try {
+    await initNotifications();
+    await scheduleHourlyReminder();
+  } catch (e) {
+    debugPrint('Notification setup error: $e');
+  }
 }
 
 class CountdownApp extends StatelessWidget {
@@ -420,4 +425,4 @@ class _HomePageState extends State<HomePage> {
       ],
     );
   }
-}
+} 
