@@ -1,0 +1,101 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Create Flutter project skeleton
+        run: flutter create --platforms=android --project-name countdown_app app_build
+
+      - name: Copy our code into the project
+        run: |
+          rm -rf app_build/lib
+          cp -r lib app_build/lib
+          cp pubspec.yaml app_build/pubspec.yaml
+          rm -rf app_build/test
+
+      - name: Patch Android config for notifications
+        working-directory: app_build
+        run: |
+          python3 - <<'PY'
+          import os, re
+
+          # ---- Gradle: desugaring ----
+          d = 'android/app/'
+          p = None
+          for name in ['build.gradle.kts', 'build.gradle']:
+              if os.path.exists(d + name):
+                  p = d + name
+                  break
+          s = open(p).read()
+          kts = p.endswith('.kts')
+          flag = 'isCoreLibraryDesugaringEnabled = true' if kts else 'coreLibraryDesugaringEnabled true'
+          s = s.replace('compileOptions {', 'compileOptions {\n        ' + flag, 1)
+          dep = ('coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")' if kts
+                 else "coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'")
+          s += '\ndependencies {\n    ' + dep + '\n}\n'
+          open(p, 'w').write(s)
+
+          # ---- Manifest: permissions + receivers ----
+          m = 'android/app/src/main/AndroidManifest.xml'
+          x = open(m).read()
+          perms = (
+              '<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n'
+              '    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n'
+              '    <uses-permission android:name="android.permission.VIBRATE"/>\n'
+              '    '
+          )
+          x = x.replace('<application', perms + '<application', 1)
+          recv = (
+              '\n    <receiver android:exported="false" '
+              'android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"/>\n'
+              '    <receiver android:exported="false" '
+              'android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">\n'
+              '        <intent-filter>\n'
+              '            <action android:name="android.intent.action.BOOT_COMPLETED"/>\n'
+              '            <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>\n'
+              '            <action android:name="android.intent.action.QUICKBOOT_POWERON"/>\n'
+              '            <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>\n'
+              '        </intent-filter>\n'
+              '    </receiver>\n'
+              '    '
+          )
+          x = x.replace('</application>', recv + '</application>', 1)
+          # ---- App name shown on phone — only change the text inside the quotes below ----
+          APP_NAME = 'Aspirants'
+          x = re.sub(r'android:label="[^"]*"', 'android:label="' + APP_NAME + '"', x, count=1)
+          open(m, 'w', encoding='utf-8').write(x)
+          PY
+
+      - name: Get packages
+        working-directory: app_build
+        run: flutter pub get
+
+      - name: Build release APK
+        working-directory: app_build
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: countdown-apk
+          path: app_build/build/app/outputs/flutter-apk/app-release.apk
