@@ -1,552 +1,521 @@
 import 'dart:async';
 
-import 'package:flutter/cupertino.dart'
-    show CupertinoTheme, CupertinoThemeData, CupertinoTimerPicker, CupertinoTimerPickerMode;
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'art.dart';
 import 'core.dart';
 
-class TimerPage extends StatefulWidget {
-  const TimerPage({super.key});
+const List<Color> _kNoteGradient = [Color(0xFFF3F9EF), Color(0xFFE8F4F1)];
 
-  @override
-  State<TimerPage> createState() => _TimerPageState();
+// ---------------------------------------------------------------
+// ডাটা মডেল
+// ---------------------------------------------------------------
+class NoteLink {
+  String title;
+  String url;
+  NoteLink({required this.title, required this.url});
+
+  Map<String, dynamic> toJson() => {'title': title, 'url': url};
+
+  factory NoteLink.fromJson(Map<String, dynamic> j) => NoteLink(
+        title: (j['title'] as String?) ?? '',
+        url: (j['url'] as String?) ?? '',
+      );
 }
 
-class _TimerPageState extends State<TimerPage> {
-  static const _cdKey = 'countdown_items';
+class Note {
+  String id;
+  String title;
+  String body;
+  bool pinned;
+  int updated;
+  List<NoteLink> links;
 
-  List<CountdownItem> items = [];
-  Timer? _ticker;
+  Note({
+    required this.id,
+    this.title = '',
+    this.body = '',
+    this.pinned = false,
+    required this.updated,
+    List<NoteLink>? links,
+  }) : links = links ?? [];
 
-  int _mode = 0; // 0 = স্টপওয়াচ, 1 = টাইমার
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'body': body,
+        'pinned': pinned,
+        'updated': updated,
+        'links': links.map((e) => e.toJson()).toList(),
+      };
 
-  // স্টপওয়াচ
-  bool _swRunning = false;
-  int _swStartMs = 0;
-  int _swAccMs = 0;
+  factory Note.fromJson(Map<String, dynamic> j) => Note(
+        id: j['id'] as String,
+        title: (j['title'] as String?) ?? '',
+        body: (j['body'] as String?) ?? '',
+        pinned: (j['pinned'] as bool?) ?? false,
+        updated: (j['updated'] as int?) ?? 0,
+        links: ((j['links'] as List?) ?? [])
+            .map((e) => NoteLink.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList(),
+      );
+}
 
-  // টাইমার (উল্টো গোনা)
-  int _tmEndMs = 0; // 0 মানে চালু নেই
-  int _tmTotalS = 300;
+// ---------------------------------------------------------------
+// নোটের তালিকা
+// ---------------------------------------------------------------
+class NotesPage extends StatefulWidget {
+  const NotesPage({super.key});
+
+  @override
+  State<NotesPage> createState() => _NotesPageState();
+}
+
+class _NotesPageState extends State<NotesPage> {
+  static const _key = 'notes_v1';
+  List<Note> notes = [];
 
   @override
   void initState() {
     super.initState();
-    final p = Store.prefs;
-    _mode = p.getInt('tp_mode') ?? 0;
-    _swRunning = p.getBool('sw_running') ?? false;
-    _swStartMs = p.getInt('sw_start_ms') ?? 0;
-    _swAccMs = p.getInt('sw_acc_ms') ?? 0;
-    _tmEndMs = p.getInt('tm_end_ms') ?? 0;
-    _tmTotalS = p.getInt('tm_total_s') ?? 300;
-    items = Store.readList(_cdKey).map((e) => CountdownItem.fromJson(e)).toList();
-    _ticker = Timer.periodic(const Duration(milliseconds: 100), (_) {
+    notes = Store.readList(_key).map((e) => Note.fromJson(e)).toList();
+  }
+
+  Future<void> _save() =>
+      Store.writeList(_key, notes.map((e) => e.toJson()).toList());
+
+  List<Note> get _sorted {
+    final list = [...notes];
+    list.sort((a, b) {
+      if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+      return b.updated.compareTo(a.updated);
+    });
+    return list;
+  }
+
+  void _openNote(Note n) {
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(
+      builder: (_) => NoteEditorPage(
+        note: n,
+        onSave: _save,
+        onDelete: () {
+          notes.removeWhere((e) => e.id == n.id);
+          _save();
+        },
+      ),
+    ))
+        .then((_) {
       if (mounted) setState(() {});
     });
   }
 
+  void _newNote() {
+    final n = Note(id: newId(), updated: DateTime.now().millisecondsSinceEpoch);
+    notes.add(n);
+    _save();
+    _openNote(n);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = _sorted;
+    return PoleScaffold(
+      title: 'Note',
+      icon: const Icon(Icons.edit_note),
+      gradient: _kNoteGradient,
+      fab: FloatingActionButton(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        onPressed: _newNote,
+        child: const Icon(Icons.add),
+      ),
+      body: list.isEmpty
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('নিচের + চেপে প্রথম নোট লেখো',
+                    style: TextStyle(color: Colors.black54)),
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+              itemCount: list.length,
+              itemBuilder: (_, i) {
+                final n = list[i];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () => _openNote(n),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: cardDecoration(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              if (n.pinned)
+                                const Padding(
+                                  padding: EdgeInsets.only(right: 6),
+                                  child: Icon(Icons.push_pin, size: 16),
+                                ),
+                              Expanded(
+                                child: Text(
+                                  n.title.trim().isEmpty
+                                      ? '(শিরোনাম নেই)'
+                                      : n.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                              if (n.links.isNotEmpty)
+                                Row(
+                                  children: [
+                                    const Icon(Icons.link,
+                                        size: 16, color: Colors.black54),
+                                    Text('${n.links.length}',
+                                        style: const TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.black54)),
+                                  ],
+                                ),
+                            ],
+                          ),
+                          if (n.body.trim().isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              n.body,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 14, color: Colors.black87),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------
+// নোট লেখার পাতা (ইন-অ্যাপ সার্চ ও সাইজ অ্যাডজাস্ট সুবিধা সহ)
+// ---------------------------------------------------------------
+class NoteEditorPage extends StatefulWidget {
+  final Note note;
+  final Future<void> Function() onSave;
+  final VoidCallback onDelete;
+
+  const NoteEditorPage({
+    super.key,
+    required this.note,
+    required this.onSave,
+    required this.onDelete,
+  });
+
+  @override
+  State<NoteEditorPage> createState() => _NoteEditorPageState();
+}
+
+class _NoteEditorPageState extends State<NoteEditorPage>
+    with WidgetsBindingObserver {
+  Note get note => widget.note;
+  late final TextEditingController _title =
+      TextEditingController(text: widget.note.title);
+  late final TextEditingController _body =
+      TextEditingController(text: widget.note.body);
+  late final TextEditingController _searchCtrl = TextEditingController();
+
+  Timer? _debounce;
+
+  bool _showWebPanel = false;
+  double _webPanelHeight = 200.0;
+  String _currentSearchUrl = 'https://www.google.com';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
   @override
   void dispose() {
-    _ticker?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _debounce?.cancel();
+    widget.onSave();
+    _title.dispose();
+    _body.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
-  int get _nowMs => DateTime.now().millisecondsSinceEpoch;
-
-  void _saveItems() {
-    Store.writeList(_cdKey, items.map((e) => e.toJson()).toList());
-  }
-
-  String _twoDigits(int n) => n.toString().padLeft(2, '0');
-
-  // ---------------- স্টপওয়াচ ----------------
-  int get _swElapsedMs =>
-      _swRunning ? _swAccMs + (_nowMs - _swStartMs) : _swAccMs;
-
-  void _swToggle() {
-    final p = Store.prefs;
-    setState(() {
-      if (_swRunning) {
-        _swAccMs += _nowMs - _swStartMs;
-        _swRunning = false;
-      } else {
-        _swStartMs = _nowMs;
-        _swRunning = true;
-      }
-    });
-    p.setBool('sw_running', _swRunning);
-    p.setInt('sw_start_ms', _swStartMs);
-    p.setInt('sw_acc_ms', _swAccMs);
-  }
-
-  void _swReset() {
-    final p = Store.prefs;
-    setState(() {
-      _swRunning = false;
-      _swAccMs = 0;
-    });
-    p.setBool('sw_running', false);
-    p.setInt('sw_acc_ms', 0);
-  }
-
-  String _fmtSw(int ms) {
-    final tenth = (ms ~/ 100) % 10;
-    final s = (ms ~/ 1000) % 60;
-    final m = (ms ~/ 60000) % 60;
-    final h = ms ~/ 3600000;
-    final hPart = h > 0 ? '${_twoDigits(h)}:' : '';
-    return '$hPart${_twoDigits(m)}:${_twoDigits(s)}.$tenth';
-  }
-
-  // ---------------- টাইমার ----------------
-  String _fmtHms(int totalSeconds) {
-    final h = totalSeconds ~/ 3600;
-    final m = (totalSeconds % 3600) ~/ 60;
-    final s = totalSeconds % 60;
-    return '${_twoDigits(h)}:${_twoDigits(m)}:${_twoDigits(s)}';
-  }
-
-  Future<void> _pickTimerDuration() async {
-    Duration temp = Duration(seconds: _tmTotalS);
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SizedBox(
-        height: 320,
-        child: Column(
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Expanded(
-              child: CupertinoTheme(
-                data: const CupertinoThemeData(
-                  textTheme: CupertinoTextThemeData(
-                    dateTimePickerTextStyle: TextStyle(
-                      color: Colors.black,
-                      fontSize: 22,
-                    ),
-                  ),
-                ),
-                child: CupertinoTimerPicker(
-                  mode: CupertinoTimerPickerMode.hms,
-                  initialTimerDuration: temp,
-                  onTimerDurationChanged: (d) => temp = d,
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('ঠিক আছে', style: TextStyle(fontSize: 16)),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (temp.inSeconds > 0) {
-      setState(() => _tmTotalS = temp.inSeconds);
-      Store.prefs.setInt('tm_total_s', _tmTotalS);
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      _debounce?.cancel();
+      widget.onSave();
     }
   }
 
-  Future<void> _tmStart() async {
-    if (_tmTotalS <= 0) return;
-    final d = Duration(seconds: _tmTotalS);
-    setState(() => _tmEndMs = _nowMs + d.inMilliseconds);
-    Store.prefs.setInt('tm_end_ms', _tmEndMs);
-    await Notifs.scheduleTimerEnd(d);
+  void _touch() {
+    note.updated = DateTime.now().millisecondsSinceEpoch;
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      widget.onSave();
+    });
   }
 
-  Future<void> _tmReset() async {
-    setState(() => _tmEndMs = 0);
-    Store.prefs.setInt('tm_end_ms', 0);
-    await Notifs.cancelTimerEnd();
+  void _performSearch() {
+    final query = _searchCtrl.text.trim();
+    if (query.isEmpty) return;
+    String targetUrl;
+    if (query.startsWith('http://') || query.startsWith('https://')) {
+      targetUrl = query;
+    } else {
+      targetUrl = 'https://www.google.com/search?q=${Uri.encodeComponent(query)}';
+    }
+    setState(() {
+      _currentSearchUrl = targetUrl;
+      _showWebPanel = true;
+    });
   }
 
-  void _setMode(int m) {
-    setState(() => _mode = m);
-    Store.prefs.setInt('tp_mode', m);
-  }
-
-  // ---------------- উপরের কার্ড ----------------
-  Widget _modeChip(String label, int value) {
-    final selected = _mode == value;
-    return ChoiceChip(
-      label: Text(
-        label,
-        style: TextStyle(color: selected ? Colors.white : Colors.black),
-      ),
-      selected: selected,
-      selectedColor: Colors.black,
-      checkmarkColor: Colors.white,
-      onSelected: (_) => _setMode(value),
-    );
-  }
-
-  Widget _stopwatchView() {
-    return Column(
-      children: [
-        Text(
-          _fmtSw(_swElapsedMs),
-          style: const TextStyle(fontSize: 46, fontWeight: FontWeight.w300),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            OutlinedButton.icon(
-              style: outlineButton(),
-              onPressed: _swReset,
-              icon: const Icon(Icons.replay),
-              label: const Text('রিসেট'),
-            ),
-            const SizedBox(width: 12),
-            ElevatedButton.icon(
-              style: blackButton(),
-              onPressed: _swToggle,
-              icon: Icon(_swRunning ? Icons.pause : Icons.play_arrow),
-              label: Text(_swRunning ? 'থামাও' : 'শুরু'),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _timerView() {
-    final running = _tmEndMs > _nowMs;
-    final finished = _tmEndMs != 0 && _tmEndMs <= _nowMs;
-
-    if (finished) {
-      return Column(
-        children: [
-          const Text('⏰ সময় শেষ!',
-              style: TextStyle(fontSize: 32, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 12),
-          ElevatedButton.icon(
-            style: blackButton(),
-            onPressed: _tmReset,
-            icon: const Icon(Icons.replay),
-            label: const Text('রিসেট'),
-          ),
-        ],
+  Future<void> _openExternalBrowser() async {
+    try {
+      await launchUrl(
+        Uri.parse(_currentSearchUrl),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('লিংক খোলা সম্ভব হয়নি')),
       );
     }
-
-    if (running) {
-      final remainingMs = _tmEndMs - _nowMs;
-      final remainingS = (remainingMs / 1000).ceil();
-      return Column(
-        children: [
-          Text(
-            _fmtHms(remainingS),
-            style: const TextStyle(fontSize: 46, fontWeight: FontWeight.w300),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            style: outlineButton(),
-            onPressed: _tmReset,
-            icon: const Icon(Icons.close),
-            label: const Text('বাতিল'),
-          ),
-        ],
-      );
-    }
-
-    return Column(
-      children: [
-        InkWell(
-          onTap: _pickTimerDuration,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: Text(
-              _fmtHms(_tmTotalS),
-              style: const TextStyle(fontSize: 46, fontWeight: FontWeight.w300),
-            ),
-          ),
-        ),
-        const Text('সময় বদলাতে লেখার ওপর চাপো',
-            style: TextStyle(fontSize: 12, color: Colors.black54)),
-        const SizedBox(height: 12),
-        ElevatedButton.icon(
-          style: blackButton(),
-          onPressed: _tmStart,
-          icon: const Icon(Icons.play_arrow),
-          label: const Text('শুরু'),
-        ),
-      ],
-    );
   }
 
-  Widget _topCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: cardDecoration(),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _modeChip('স্টপওয়াচ', 0),
-              const SizedBox(width: 10),
-              _modeChip('টাইমার', 1),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _mode == 0 ? _stopwatchView() : _timerView(),
-        ],
-      ),
-    );
-  }
-
-  // ---------------- কাউন্টডাউন ----------------
-  Future<void> _addItem() async {
-    final nameCtrl = TextEditingController();
-    DateTime? date;
-    TimeOfDay time = const TimeOfDay(hour: 0, minute: 0);
-    String? error;
-
+  Future<void> _addLink() async {
+    final urlCtrl = TextEditingController();
+    final titleCtrl = TextEditingController();
     await showDialog<void>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setD) => AlertDialog(
-          title: const Text('নতুন কাউন্টডাউন'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'নাম (যেমন: ভর্তি পরীক্ষা)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                    alignment: Alignment.centerLeft,
-                  ),
-                  icon: const Icon(Icons.calendar_today, size: 18),
-                  onPressed: () async {
-                    final d = await showDatePicker(
-                      context: ctx,
-                      initialDate: DateTime.now().add(const Duration(days: 1)),
-                      firstDate: DateTime.now(),
-                      lastDate: DateTime(2100),
-                    );
-                    if (d != null) setD(() => date = d);
-                  },
-                  label: Text(
-                    date == null
-                        ? 'তারিখ বাছাই করো'
-                        : '${date!.day}/${date!.month}/${date!.year}',
-                    style: const TextStyle(fontSize: 14, color: Colors.black87),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                    alignment: Alignment.centerLeft,
-                  ),
-                  icon: const Icon(Icons.access_time, size: 18),
-                  onPressed: () async {
-                    final t = await showTimePicker(
-                      context: ctx,
-                      initialTime: time,
-                    );
-                    if (t != null) setD(() => time = t);
-                  },
-                  label: Text(
-                    'সময়: ${_twoDigits(time.hour)}:${_twoDigits(time.minute)}',
-                    style: const TextStyle(fontSize: 14, color: Colors.black87),
-                  ),
-                ),
-                
-                if (error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      error!,
-                      style: const TextStyle(color: Colors.red, fontSize: 13),
-                    ),
-                  ),
-              ],
+      builder: (ctx) => AlertDialog(
+        title: const Text('লিংক সেভ করো'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: urlCtrl,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(labelText: 'লিংক (URL)'),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('বাতিল'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.black,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () {
-                if (nameCtrl.text.trim().isEmpty || date == null) {
-                  setD(() => error = 'নাম ও তারিখ দুটোই দিতে হবে');
-                  return;
-                }
-                final target = DateTime(
-                  date!.year,
-                  date!.month,
-                  date!.day,
-                  time.hour,
-                  time.minute,
-                );
-                setState(() {
-                  items.add(CountdownItem(
-                    id: newId(),
-                    name: nameCtrl.text.trim(),
-                    target: target,
-                  ));
-                  items.sort((a, b) => a.target.compareTo(b.target));
-                });
-                _saveItems();
-                Navigator.pop(ctx);
-              },
-              child: const Text('যোগ করো'),
+            const SizedBox(height: 8),
+            TextField(
+              controller: titleCtrl,
+              decoration:
+                  const InputDecoration(labelText: 'নাম (ঐচ্ছিক)'),
             ),
           ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('বাতিল'),
+          ),
+          TextButton(
+            onPressed: () {
+              var url = urlCtrl.text.trim();
+              if (url.isEmpty) return;
+              if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                url = 'https://$url';
+              }
+              setState(() {
+                note.links.add(NoteLink(title: titleCtrl.text.trim(), url: url));
+                note.updated = DateTime.now().millisecondsSinceEpoch;
+              });
+              widget.onSave();
+              Navigator.pop(ctx);
+            },
+            child: const Text('সেভ'),
+          ),
+        ],
       ),
     );
   }
 
-  Future<void> _delete(CountdownItem item) async {
+  Future<void> _openLink(NoteLink l) async {
+    try {
+      await launchUrl(Uri.parse(l.url), mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('লিংক খোলা যায়নি')),
+      );
+    }
+  }
+
+  Future<void> _confirmDelete() async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('মুছে ফেলবে?'),
-        content: Text(item.name),
+        title: const Text('এই নোট মুছে ফেলবে?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('না'),
-          ),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('না')),
           TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('হ্যাঁ'),
-          ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('হ্যাঁ')),
         ],
       ),
     );
     if (ok == true) {
-      setState(() => items.removeWhere((e) => e.id == item.id));
-      _saveItems();
+      widget.onDelete();
+      if (mounted) Navigator.of(context).pop();
     }
   }
 
-  Widget _box(String value, String label) {
-    return Column(
-      children: [
-        Text(value,
-            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w700)),
-        Text(label,
-            style: const TextStyle(fontSize: 12, color: Colors.black54)),
-      ],
-    );
-  }
-
-  Widget _card(CountdownItem item, int index) {
-    final diff = item.target.difference(DateTime.now());
-    final finished = diff.isNegative;
-    final d = finished ? Duration.zero : diff;
-    final q = quoteFor(index);
-
+  Widget _buildWebSearchSection() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
       decoration: cardDecoration(),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
               Expanded(
-                child: Text(
-                  item.name,
-                  style: const TextStyle(
-                      fontSize: 19, fontWeight: FontWeight.w700),
+                child: TextField(
+                  controller: _searchCtrl,
+                  decoration: InputDecoration(
+                    hintText: 'গুগল সার্চ বা ইউআরএল লিখুন...',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    contentPadding: const EdgeInsets.symmetric(
+                        vertical: 10, horizontal: 12),
+                    isDense: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onSubmitted: (_) => _performSearch(),
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline),
-                onPressed: () => _delete(item),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onPressed: _performSearch,
+                child: const Text('সার্চ'),
               ),
             ],
           ),
-          Row(
-            children: [
-              const Icon(Icons.event, size: 16, color: Colors.black54),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  '${item.target.day}/${item.target.month}/${item.target.year} - ${_twoDigits(item.target.hour)}:${_twoDigits(item.target.minute)}',
-                  style: const TextStyle(fontSize: 13, color: Colors.black87),
-                ),
+          if (_showWebPanel) ...[
+            const SizedBox(height: 10),
+            Container(
+              height: _webPanelHeight,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.black12),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (finished)
-            const Text('⏰ সময় শেষ!', style: TextStyle(fontSize: 22))
-          else
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _box('${d.inDays}', 'দিন'),
-                _box(_twoDigits(d.inHours % 24), 'ঘণ্টা'),
-                _box(_twoDigits(d.inMinutes % 60), 'মিনিট'),
-                _box(_twoDigits(d.inSeconds % 60), 'সেকেন্ড'),
-              ],
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _currentSearchUrl,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 12, color: Colors.black87),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.open_in_new, size: 18),
+                        tooltip: 'ব্রাউজারে খুলুন',
+                        onPressed: _openExternalBrowser,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        tooltip: 'প্যানেল বন্ধ করুন',
+                        onPressed: () {
+                          setState(() => _showWebPanel = false);
+                        },
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: Center(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.language,
+                                size: 36, color: Colors.black54),
+                            const SizedBox(height: 8),
+                            Text(
+                              'সার্চ লিংক প্রস্তুত:\n$_currentSearchUrl',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  fontSize: 13, color: Colors.black87),
+                            ),
+                            const SizedBox(height: 10),
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.black,
+                                side: const BorderSide(color: Colors.black38),
+                              ),
+                              onPressed: _openExternalBrowser,
+                              icon: const Icon(Icons.launch, size: 16),
+                              label: const Text('পেজ খুলুন'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onVerticalDragUpdate: (details) {
+                      setState(() {
+                        _webPanelHeight = (_webPanelHeight + details.delta.dy)
+                            .clamp(120.0, 450.0);
+                      });
+                    },
+                    child: Container(
+                      color: Colors.transparent,
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: const Icon(Icons.drag_handle,
+                          size: 16, color: Colors.black45),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          const Divider(height: 26),
-          Text(
-            '“${q[0]}”',
-            style: const TextStyle(
-                fontStyle: FontStyle.italic, color: Colors.black87),
-          ),
-          const SizedBox(height: 6),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Text(
-              '— ${q[1]}',
-              style: const TextStyle(fontSize: 12, color: Colors.black54),
-            ),
-          ),
+          ],
         ],
       ),
     );
@@ -555,33 +524,114 @@ class _TimerPageState extends State<TimerPage> {
   @override
   Widget build(BuildContext context) {
     return PoleScaffold(
-      title: 'Timer',
-      icon: const Icon(Icons.watch_later_outlined),
-      gradient: const [Color(0xFFF4F1FF), Color(0xFFE3EDFF)],
-      fab: FloatingActionButton(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        onPressed: _addItem,
-        child: const Icon(Icons.add),
-      ),
+      title: 'Note',
+      icon: const Icon(Icons.edit_note),
+      gradient: _kNoteGradient,
+      actions: [
+        IconButton(
+          tooltip: 'পিন',
+          icon: Icon(note.pinned ? Icons.push_pin : Icons.push_pin_outlined),
+          onPressed: () {
+            setState(() => note.pinned = !note.pinned);
+            widget.onSave();
+          },
+        ),
+        PopupMenuButton<String>(
+          onSelected: (v) {
+            if (v == 'delete') _confirmDelete();
+          },
+          itemBuilder: (_) => const [
+            PopupMenuItem<String>(value: 'delete', child: Text('নোট মুছে ফেলো')),
+          ],
+        ),
+      ],
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 60),
         children: [
-          _topCard(),
-          const SizedBox(height: 22),
-          const Text('কাউন্টডাউন',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 10),
-          if (items.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(
-                child: Text('নিচের + চেপে প্রথম কাউন্টডাউন বানাও',
-                    style: TextStyle(color: Colors.black54)),
+          _buildWebSearchSection(),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: cardDecoration(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _title,
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.w700),
+                  decoration: const InputDecoration(
+                    hintText: 'শিরোনাম',
+                    border: InputBorder.none,
+                  ),
+                  onChanged: (v) {
+                    note.title = v;
+                    _touch();
+                  },
+                ),
+                const Divider(),
+                TextField(
+                  controller: _body,
+                  minLines: 8,
+                  maxLines: null,
+                  decoration: const InputDecoration(
+                    hintText: 'এখানে লেখো বা কপি করা লেখা পেস্ট করো...',
+                    border: InputBorder.none,
+                  ),
+                  onChanged: (v) {
+                    note.body = v;
+                    _touch();
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Expanded(
+                child: Text('সেভ করা লিংক',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               ),
+              TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: Colors.black),
+                onPressed: _addLink,
+                icon: const Icon(Icons.add_link),
+                label: const Text('লিংক যোগ করো'),
+              ),
+            ],
+          ),
+          if (note.links.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('কোনো লিংক সেভ করা নেই',
+                  style: TextStyle(color: Colors.black54)),
             )
           else
-            ...List.generate(items.length, (i) => _card(items[i], i)),
+            for (final l in note.links)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: cardDecoration(),
+                child: ListTile(
+                  leading: const Icon(Icons.link),
+                  title: Text(
+                    l.title.isEmpty ? l.url : l.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: l.title.isEmpty
+                      ? null
+                      : Text(l.url, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  onTap: () => _openLink(l),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () {
+                      setState(() => note.links.remove(l));
+                      widget.onSave();
+                    },
+                  ),
+                ),
+              ),
         ],
       ),
     );
