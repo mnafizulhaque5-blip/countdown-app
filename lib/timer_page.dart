@@ -1,7 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart'
-    show CupertinoTimerPicker, CupertinoTimerPickerMode;
+    show
+        CupertinoTextThemeData,
+        CupertinoTheme,
+        CupertinoThemeData,
+        CupertinoTimerPicker,
+        CupertinoTimerPickerMode;
 import 'package:flutter/material.dart';
 
 import 'art.dart';
@@ -129,10 +134,21 @@ class _TimerPageState extends State<TimerPage> {
         child: Column(
           children: [
             Expanded(
-              child: CupertinoTimerPicker(
-                mode: CupertinoTimerPickerMode.hms,
-                initialTimerDuration: temp,
-                onTimerDurationChanged: (d) => temp = d,
+              child: CupertinoTheme(
+                data: const CupertinoThemeData(
+                  brightness: Brightness.light,
+                  textTheme: CupertinoTextThemeData(
+                    pickerTextStyle: TextStyle(
+                      color: Colors.black,
+                      fontSize: 22,
+                    ),
+                  ),
+                ),
+                child: CupertinoTimerPicker(
+                  mode: CupertinoTimerPickerMode.hms,
+                  initialTimerDuration: temp,
+                  onTimerDurationChanged: (d) => temp = d,
+                ),
               ),
             ),
             Padding(
