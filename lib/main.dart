@@ -29,20 +29,8 @@ class AspirantsApp extends StatelessWidget {
     return MaterialApp(
       title: 'Aspirants',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: Colors.black,
-        colorScheme: const ColorScheme.dark(
-          primary: Colors.white,
-          onPrimary: Colors.black,
-          surface: Colors.black,
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.black,
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-      ),
+      // ডায়লগ, তারিখ-সময় বাছাই ইত্যাদি সবকিছু হালকা রঙে ও কালো লেখায় দেখাবে
+      theme: lightPageTheme(),
       home: const SplashPage(),
     );
   }
