@@ -397,7 +397,7 @@ class _NoteEditorPageState extends State<NoteEditorPage>
         children: [
           // ---------------- গুগল সার্চ বার ----------------
           Container(
-            padding: const EdgeInsets.horizontal(12),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: cardDecoration(),
             child: Row(
               children: [
