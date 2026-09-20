@@ -7,13 +7,13 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -32,36 +32,221 @@ jobs:
           cp -r lib app_build/lib
           cp pubspec.yaml app_build/pubspec.yaml
           rm -rf app_build/test
+          rm -f app_build/analysis_options.yaml
 
-      - name: Patch Android config for notifications
+      - name: Generate logo, icons and background art
+        run: |
+          python3 -m venv /tmp/venv
+          /tmp/venv/bin/pip install --quiet pillow numpy
+          mkdir -p /tmp/assets
+          cat > /tmp/make_assets.py <<'PY'
+          import math, os, random
+          import numpy as np
+          from PIL import Image, ImageDraw, ImageFilter
+
+          OUT = os.environ.get("ASSET_OUT", "out")
+          os.makedirs(OUT, exist_ok=True)
+          rnd = random.Random(7)
+
+          # ------------------------------------------------------------------
+          # 1) Background art: dusk sky + layered mountains + pines + soft clouds
+          # ------------------------------------------------------------------
+          W, H = 1080, 2400
+          ys = np.linspace(0, 1, H)[:, None]
+          sky_top = np.array([66, 40, 50], dtype=float)
+          sky_mid = np.array([128, 72, 80], dtype=float)
+          sky_low = np.array([96, 58, 78], dtype=float)
+          t1 = np.clip(ys / 0.50, 0, 1)
+          t2 = np.clip((ys - 0.50) / 0.30, 0, 1)
+          sky = sky_top + (sky_mid - sky_top) * t1
+          sky = np.where(ys > 0.50, sky_mid + (sky_low - sky_mid) * t2, sky)
+          img = np.repeat(sky[:, None, :], W, axis=1).reshape(H, W, 3)
+          base = Image.fromarray(np.clip(img, 0, 255).astype("uint8"), "RGB").convert("RGBA")
+
+          # soft sun glow near the horizon
+          glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+          gd = ImageDraw.Draw(glow)
+          cx, cy = int(W * 0.55), int(H * 0.44)
+          for r, a in [(520, 14), (380, 18), (260, 24), (150, 34)]:
+              gd.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(255, 176, 140, a))
+          glow = glow.filter(ImageFilter.GaussianBlur(60))
+          base = Image.alpha_composite(base, glow)
+
+          # clouds
+          clouds = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+          cd = ImageDraw.Draw(clouds)
+          for _ in range(9):
+              x0 = rnd.randint(-100, W - 200)
+              y0 = rnd.randint(int(H * 0.16), int(H * 0.42))
+              for _ in range(rnd.randint(4, 7)):
+                  w = rnd.randint(180, 420)
+                  h = rnd.randint(50, 110)
+                  dx = rnd.randint(-120, 260)
+                  dy = rnd.randint(-30, 30)
+                  cd.ellipse([x0 + dx, y0 + dy, x0 + dx + w, y0 + dy + h],
+                             fill=(228, 176, 168, rnd.randint(22, 40)))
+          clouds = clouds.filter(ImageFilter.GaussianBlur(28))
+          base = Image.alpha_composite(base, clouds)
+
+          # mountain layers (far -> near)
+          layers = [
+              (0.50, 90, (122, 68, 80), 0.9, False),
+              (0.585, 110, (100, 58, 76), 1.1, False),
+              (0.67, 120, (76, 50, 74), 1.3, False),
+              (0.75, 110, (54, 42, 68), 1.5, True),
+              (0.84, 100, (36, 31, 52), 1.8, True),
+              (0.93, 80, (22, 20, 36), 2.2, True),
+          ]
+          xs = np.arange(W)
+          for base_y, amp, col, freq, pines in layers:
+              p = [rnd.uniform(0, 6.28) for _ in range(4)]
+              f = freq * 2 * math.pi / W
+              ridge = (0.55 * (1 - np.abs(np.sin(xs * f * 1.1 + p[0])))
+                       + 0.30 * np.sin(xs * f * 2.3 + p[1])
+                       + 0.15 * np.sin(xs * f * 5.1 + p[2]))
+              top_y = base_y * H + amp * (ridge - 0.5)
+              layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+              ld = ImageDraw.Draw(layer)
+              pts = [(int(x), int(top_y[x])) for x in range(0, W, 3)] + [(W, H), (0, H)]
+              ld.polygon(pts, fill=col + (255,))
+              if pines:
+                  x = 0
+                  while x < W:
+                      hgt = rnd.randint(46, 110) * (0.7 + 0.15 * freq)
+                      wid = hgt * 0.36
+                      yb = top_y[min(x, W - 1)] + 6
+                      for k in range(3):
+                          s = 1 - k * 0.22
+                          ty = yb - hgt * (0.35 + k * 0.30)
+                          ld.polygon([(x, ty - hgt * 0.45 * s), (x - wid * s, ty + hgt * 0.20 * s),
+                                      (x + wid * s, ty + hgt * 0.20 * s)], fill=col + (255,))
+                      x += rnd.randint(16, 34)
+              base = Image.alpha_composite(base, layer)
+              # mist between layers
+              mist = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+              md = ImageDraw.Draw(mist)
+              my = int(base_y * H + amp * 0.9)
+              md.rectangle([0, my, W, my + 220], fill=(150, 100, 115, 26))
+              mist = mist.filter(ImageFilter.GaussianBlur(50))
+              base = Image.alpha_composite(base, mist)
+
+          # vignette + fine noise
+          arr = np.array(base.convert("RGB")).astype(float)
+          yy, xx = np.mgrid[0:H, 0:W]
+          vig = 1 - 0.28 * (((xx - W / 2) / (W / 2)) ** 2 + ((yy - H / 2) / (H / 2)) ** 2) / 2
+          arr *= vig[:, :, None]
+          arr += np.random.default_rng(3).normal(0, 1.6, arr.shape)
+          bg = Image.fromarray(np.clip(arr, 0, 255).astype("uint8"), "RGB")
+          bg.save(os.path.join(OUT, "bg.jpg"), quality=88)
+
+          # ------------------------------------------------------------------
+          # 2) Logo: dark rounded square, timer ring + "A" peak, coral accent
+          # ------------------------------------------------------------------
+          S = 1024
+          CORAL = (255, 122, 89)
+
+          def draw_mark(size, scale=1.0, with_bg=True, corner=0.22):
+              k = 4  # supersample
+              N = size * k
+              im = Image.new("RGBA", (N, N), (0, 0, 0, 0))
+              d = ImageDraw.Draw(im)
+              if with_bg:
+                  grad = Image.new("RGBA", (N, N))
+                  gp = grad.load()
+                  for y in range(N):
+                      tt = y / N
+                      c = (int(30 - 18 * tt), int(30 - 18 * tt), int(42 - 26 * tt), 255)
+                      for x in range(N):
+                          gp[x, y] = c
+                  mask = Image.new("L", (N, N), 0)
+                  ImageDraw.Draw(mask).rounded_rectangle([0, 0, N - 1, N - 1], radius=int(N * corner), fill=255)
+                  im.paste(grad, (0, 0), mask)
+                  d = ImageDraw.Draw(im)
+              c = N / 2
+              R = N * 0.34 * scale
+              wdt = N * 0.045 * scale
+              # ring with a gap (timer feel): from -60deg to 250deg
+              box = [c - R, c - R, c + R, c + R]
+              d.arc(box, start=-60, end=250, fill=(245, 245, 250, 255), width=int(wdt))
+              # coral end dot
+              a = math.radians(-60)
+              px, py = c + R * math.cos(a), c + R * math.sin(a)
+              rr = wdt * 0.95
+              d.ellipse([px - rr, py - rr, px + rr, py + rr], fill=CORAL + (255,))
+              # "A" peak inside the ring
+              h = R * 0.95
+              w = R * 0.90
+              lw = wdt * 1.25
+              top = (c, c - h * 0.52)
+              left = (c - w * 0.55, c + h * 0.50)
+              right = (c + w * 0.55, c + h * 0.50)
+              d.line([left, top, right], fill=(245, 245, 250, 255), width=int(lw), joint="curve")
+              t = 0.40
+              bar_y = left[1] + (top[1] - left[1]) * t
+              lx = left[0] + (top[0] - left[0]) * t
+              rx = right[0] + (top[0] - right[0]) * t
+              d.line([(lx + lw * 0.45, bar_y), (rx - lw * 0.45, bar_y)], fill=CORAL + (255,), width=int(lw * 0.7))
+              return im.resize((size, size), Image.LANCZOS)
+
+          logo = draw_mark(512)
+          os.makedirs(os.path.join(OUT, "assets"), exist_ok=True)
+          logo.save(os.path.join(OUT, "logo.png"))
+
+          # Android launcher icons
+          res = os.path.join(OUT, "res")
+          for folder, px in [("mipmap-mdpi", 48), ("mipmap-hdpi", 72), ("mipmap-xhdpi", 96),
+                             ("mipmap-xxhdpi", 144), ("mipmap-xxxhdpi", 192)]:
+              os.makedirs(os.path.join(res, folder), exist_ok=True)
+              draw_mark(px, corner=0.22).save(os.path.join(res, folder, "ic_launcher.png"))
+          # adaptive foreground (108dp -> 432px, content inside the safe 66%)
+          os.makedirs(os.path.join(res, "drawable"), exist_ok=True)
+          fg = draw_mark(432, scale=0.66, with_bg=False)
+          fg.save(os.path.join(res, "drawable", "ic_launcher_foreground.png"))
+          print("assets written to", OUT)
+          PY
+          ASSET_OUT=/tmp/assets /tmp/venv/bin/python /tmp/make_assets.py
+          mkdir -p app_build/assets
+          cp /tmp/assets/bg.jpg /tmp/assets/logo.png app_build/assets/
+          cp -r /tmp/assets/res/* app_build/android/app/src/main/res/
+
+      - name: Patch Android config
         working-directory: app_build
         run: |
           python3 - <<'PY'
           import os, re
 
-          # ---- Gradle: desugaring ----
+          # ---------- Gradle: desugaring (notifications) + no code shrinking ----------
           d = 'android/app/'
           p = None
           for name in ['build.gradle.kts', 'build.gradle']:
               if os.path.exists(d + name):
                   p = d + name
                   break
-          s = open(p).read()
+          s = open(p, encoding='utf-8').read()
           kts = p.endswith('.kts')
           flag = 'isCoreLibraryDesugaringEnabled = true' if kts else 'coreLibraryDesugaringEnabled true'
           s = s.replace('compileOptions {', 'compileOptions {\n        ' + flag, 1)
           dep = ('coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")' if kts
                  else "coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'")
           s += '\ndependencies {\n    ' + dep + '\n}\n'
-          open(p, 'w').write(s)
+          if kts:
+              s = s.replace('signingConfig = signingConfigs.getByName("debug")',
+                            'signingConfig = signingConfigs.getByName("debug")\n            isMinifyEnabled = false\n            isShrinkResources = false', 1)
+          else:
+              s = s.replace('signingConfig signingConfigs.debug',
+                            'signingConfig signingConfigs.debug\n            minifyEnabled false\n            shrinkResources false', 1)
+          open(p, 'w', encoding='utf-8').write(s)
 
-          # ---- Manifest: permissions + receivers ----
+          # ---------- Manifest: permissions, receivers, name, Impeller off ----------
           m = 'android/app/src/main/AndroidManifest.xml'
-          x = open(m).read()
+          x = open(m, encoding='utf-8').read()
           perms = (
-              '<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n'
+              '<uses-permission android:name="android.permission.INTERNET"/>\n'
+              '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n'
               '    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n'
               '    <uses-permission android:name="android.permission.VIBRATE"/>\n'
+              '    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>\n'
+              '    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32"/>\n'
               '    '
           )
           x = x.replace('<application', perms + '<application', 1)
@@ -81,10 +266,34 @@ jobs:
               '    '
           )
           x = x.replace('</application>', recv + '</application>', 1)
-          # ---- App name shown on phone — only change the text inside the quotes below ----
           APP_NAME = 'Aspirants'
           x = re.sub(r'android:label="[^"]*"', 'android:label="' + APP_NAME + '"', x, count=1)
           open(m, 'w', encoding='utf-8').write(x)
+
+          # ---------- Resources: adaptive icon + notification icon ----------
+          res = 'android/app/src/main/res/'
+          os.makedirs(res + 'mipmap-anydpi-v26', exist_ok=True)
+          os.makedirs(res + 'values', exist_ok=True)
+          os.makedirs(res + 'drawable', exist_ok=True)
+          open(res + 'mipmap-anydpi-v26/ic_launcher.xml', 'w', encoding='utf-8').write(
+              '<?xml version="1.0" encoding="utf-8"?>\n'
+              '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
+              '    <background android:drawable="@color/ic_launcher_background"/>\n'
+              '    <foreground android:drawable="@drawable/ic_launcher_foreground"/>\n'
+              '</adaptive-icon>\n')
+          open(res + 'values/ic_launcher_background.xml', 'w', encoding='utf-8').write(
+              '<?xml version="1.0" encoding="utf-8"?>\n'
+              '<resources>\n'
+              '    <color name="ic_launcher_background">#0B0B10</color>\n'
+              '</resources>\n')
+          open(res + 'drawable/ic_notif.xml', 'w', encoding='utf-8').write(
+              '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
+              '    android:width="24dp" android:height="24dp"\n'
+              '    android:viewportWidth="24" android:viewportHeight="24">\n'
+              '  <path android:fillColor="#FFFFFFFF"\n'
+              '      android:pathData="M12,2C6.5,2 2,6.5 2,12s4.5,10 10,10 10,-4.5 10,-10S17.5,2 12,2zM12,20c-4.4,0 -8,-3.6 -8,-8s3.6,-8 8,-8 8,3.6 8,8 -3.6,8 -8,8zM12.5,7H11v6l5.2,3.2 0.8,-1.3 -4.5,-2.7V7z"/>\n'
+              '</vector>\n')
+          print('Android config patched')
           PY
 
       - name: Get packages
@@ -99,4 +308,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: countdown-apk
-          path: app_build/build/app/outputs/flutter-apk/app-release.apk        
+          path: app_build/build/app/outputs/flutter-apk/app-release.apk              
