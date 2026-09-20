@@ -1,4 +1,4 @@
-     import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/cupertino.dart'
     show CupertinoTimerPicker, CupertinoTimerPickerMode;
@@ -59,6 +59,8 @@ class _TimerPageState extends State<TimerPage> {
     Store.writeList(_cdKey, items.map((e) => e.toJson()).toList());
   }
 
+  String _twoDigits(int n) => n.toString().padLeft(2, '0');
+
   // ---------------- স্টপওয়াচ ----------------
   int get _swElapsedMs =>
       _swRunning ? _swAccMs + (_nowMs - _swStartMs) : _swAccMs;
@@ -94,8 +96,8 @@ class _TimerPageState extends State<TimerPage> {
     final s = (ms ~/ 1000) % 60;
     final m = (ms ~/ 60000) % 60;
     final h = ms ~/ 3600000;
-    final hPart = h > 0 ? '${two(h)}:' : '';
-    return '$hPart${two(m)}:${two(s)}.$tenth';
+    final hPart = h > 0 ? '${_twoDigits(h)}:' : '';
+    return '$hPart${_twoDigits(m)}:${_twoDigits(s)}.$tenth';
   }
 
   // ---------------- টাইমার ----------------
@@ -103,7 +105,7 @@ class _TimerPageState extends State<TimerPage> {
     final h = totalSeconds ~/ 3600;
     final m = (totalSeconds % 3600) ~/ 60;
     final s = totalSeconds % 60;
-    return '${two(h)}:${two(m)}:${two(s)}';
+    return '${_twoDigits(h)}:${_twoDigits(m)}:${_twoDigits(s)}';
   }
 
   Future<void> _pickTimerDuration() async {
@@ -290,7 +292,7 @@ class _TimerPageState extends State<TimerPage> {
     );
   }
 
-  // ---------------- কাউন্টডাউন (সেকেন্ডারি পোল) ----------------
+  // ---------------- কাউন্টডাউন ----------------
   Future<void> _addItem() async {
     final nameCtrl = TextEditingController();
     DateTime? date;
@@ -305,7 +307,7 @@ class _TimerPageState extends State<TimerPage> {
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 TextField(
                   controller: nameCtrl,
@@ -316,7 +318,6 @@ class _TimerPageState extends State<TimerPage> {
                 ),
                 const SizedBox(height: 12),
                 
-                // তারিখ বাছাই করার বাটন
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
@@ -341,7 +342,6 @@ class _TimerPageState extends State<TimerPage> {
                 ),
                 const SizedBox(height: 10),
                 
-                // সময় বাছাই করার বাটন
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
@@ -356,7 +356,7 @@ class _TimerPageState extends State<TimerPage> {
                     if (t != null) setD(() => time = t);
                   },
                   label: Text(
-                    'সময়: ${time.format(ctx)}',
+                    'সময়: ${_twoDigits(time.hour)}:${_twoDigits(time.minute)}',
                     style: const TextStyle(fontSize: 14, color: Colors.black87),
                   ),
                 ),
@@ -482,7 +482,7 @@ class _TimerPageState extends State<TimerPage> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  fmtDateTime(item.target),
+                  '${item.target.day}/${item.target.month}/${item.target.year} - ${_twoDigits(item.target.hour)}:${_twoDigits(item.target.minute)}',
                   style: const TextStyle(fontSize: 13, color: Colors.black87),
                 ),
               ),
@@ -496,9 +496,9 @@ class _TimerPageState extends State<TimerPage> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _box('${d.inDays}', 'দিন'),
-                _box(two(d.inHours % 24), 'ঘণ্টা'),
-                _box(two(d.inMinutes % 60), 'মিনিট'),
-                _box(two(d.inSeconds % 60), 'সেকেন্ড'),
+                _box(_twoDigits(d.inHours % 24), 'ঘণ্টা'),
+                _box(_twoDigits(d.inMinutes % 60), 'মিনিট'),
+                _box(_twoDigits(d.inSeconds % 60), 'সেকেন্ড'),
               ],
             ),
           const Divider(height: 26),
@@ -554,4 +554,4 @@ class _TimerPageState extends State<TimerPage> {
       ),
     );
   }
-}                                         
+}                           
