@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart'
-    show CupertinoTimerPicker, CupertinoTimerPickerMode;
+    show CupertinoTheme, CupertinoThemeData, CupertinoTimerPicker, CupertinoTimerPickerMode;
 import 'package:flutter/material.dart';
 
 import 'art.dart';
@@ -113,23 +113,55 @@ class _TimerPageState extends State<TimerPage> {
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => SizedBox(
         height: 320,
         child: Column(
           children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
             Expanded(
-              child: CupertinoTimerPicker(
-                mode: CupertinoTimerPickerMode.hms,
-                initialTimerDuration: temp,
-                onTimerDurationChanged: (d) => temp = d,
+              child: CupertinoTheme(
+                data: const CupertinoThemeData(
+                  textTheme: CupertinoTextThemeData(
+                    dateTimePickerTextStyle: TextStyle(
+                      color: Colors.black,
+                      fontSize: 22,
+                    ),
+                  ),
+                ),
+                child: CupertinoTimerPicker(
+                  mode: CupertinoTimerPickerMode.hms,
+                  initialTimerDuration: temp,
+                  onTimerDurationChanged: (d) => temp = d,
+                ),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(12),
-              child: ElevatedButton(
-                style: blackButton(),
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('ঠিক আছে'),
+              padding: const EdgeInsets.all(16),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('ঠিক আছে', style: TextStyle(fontSize: 16)),
+                ),
               ),
             ),
           ],
@@ -554,4 +586,4 @@ class _TimerPageState extends State<TimerPage> {
       ),
     );
   }
-}                           
+}
