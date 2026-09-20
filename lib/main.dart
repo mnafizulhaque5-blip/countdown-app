@@ -17,6 +17,8 @@ Future<void> main() async {
   } catch (e) {
     debugPrint('Notification setup error: $e');
   }
+  // অ্যাপ খুললেই কাউন্টডাউনের প্রতিদিনের রিমাইন্ডার নতুন করে সাজানো হয়
+  await Notifs.rescheduleCountdownReminders();
 }
 
 class AspirantsApp extends StatelessWidget {
@@ -241,4 +243,4 @@ class HomePage extends StatelessWidget {
       ),
     );
   }
-}                                             
+}
