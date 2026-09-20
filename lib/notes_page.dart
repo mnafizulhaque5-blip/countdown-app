@@ -209,7 +209,7 @@ class _NotesPageState extends State<NotesPage> {
 }
 
 // ---------------------------------------------------------------
-// নোট লেখার পাতা (সার্চ বক্স ও ইন-অ্যাপ ওয়েব সাইজ সহ)
+// নোট লেখার পাতা (নিজে থেকে সেভ হয় ও সাইজ অ্যাডজাস্টেবল সার্চ প্যানেল সহ)
 // ---------------------------------------------------------------
 class NoteEditorPage extends StatefulWidget {
   final Note note;
@@ -235,12 +235,10 @@ class _NoteEditorPageState extends State<NoteEditorPage>
   late final TextEditingController _body =
       TextEditingController(text: widget.note.body);
   late final TextEditingController _searchCtrl = TextEditingController();
-  
-  Timer? _debounce;
 
-  // সার্চ ও সার্চ-বক্স হাইট কন্ট্রোল
+  Timer? _debounce;
   bool _showWebPanel = false;
-  double _webPanelHeight = 220.0;
+  double _webPanelHeight = 180.0;
   String _currentSearchUrl = 'https://www.google.com';
 
   @override
@@ -300,7 +298,7 @@ class _NoteEditorPageState extends State<NoteEditorPage>
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ব্রাউজার খোলা সম্ভব হয়নি')),
+        const SnackBar(content: Text('লিংক খোলা যায়নি')),
       );
     }
   }
@@ -399,32 +397,19 @@ class _NoteEditorPageState extends State<NoteEditorPage>
               Expanded(
                 child: TextField(
                   controller: _searchCtrl,
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     hintText: 'গুগল সার্চ বা ইউআরএল লিখুন...',
-                    prefixIcon: const Icon(Icons.search, size: 20),
-                    contentPadding: const EdgeInsets.symmetric(
-                        vertical: 10, horizontal: 12),
+                    prefixIcon: Icon(Icons.search, size: 20),
                     isDense: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    border: OutlineInputBorder(),
                   ),
                   onSubmitted: (_) => _performSearch(),
                 ),
               ),
               const SizedBox(width: 8),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
+              IconButton(
+                icon: const Icon(Icons.arrow_forward),
                 onPressed: _performSearch,
-                child: const Text('সার্চ'),
               ),
             ],
           ),
@@ -434,9 +419,8 @@ class _NoteEditorPageState extends State<NoteEditorPage>
               height: _webPanelHeight,
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.black12),
+                color: Colors.black12,
+                borderRadius: BorderRadius.circular(8),
               ),
               child: Column(
                 children: [
@@ -448,18 +432,15 @@ class _NoteEditorPageState extends State<NoteEditorPage>
                           _currentSearchUrl,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.black87),
+                          style: const TextStyle(fontSize: 12),
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.open_in_browser, size: 18),
-                        tooltip: 'ব্রাউজারে খুলুন',
+                        icon: const Icon(Icons.open_in_new, size: 18),
                         onPressed: _openExternalBrowser,
                       ),
                       IconButton(
                         icon: const Icon(Icons.close, size: 18),
-                        tooltip: 'প্যানেল বন্ধ করুন',
                         onPressed: () {
                           setState(() => _showWebPanel = false);
                         },
@@ -469,29 +450,16 @@ class _NoteEditorPageState extends State<NoteEditorPage>
                   const Divider(height: 1),
                   Expanded(
                     child: Center(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.travel_explore,
-                                size: 36, color: Colors.black54),
-                            const SizedBox(height: 8),
-                            Text(
-                              'সার্চ লিংক তৈরি হয়েছে:\n$_currentSearchUrl',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                  fontSize: 13, color: Colors.black87),
-                            ),
-                            const SizedBox(height: 10),
-                            OutlinedButton.icon(
-                              style: outlineButton(),
-                              onPressed: _openExternalBrowser,
-                              icon: const Icon(Icons.launch, size: 16),
-                              label: const Text('ব্রাউজারে বিস্তারিত দেখুন'),
-                            ),
-                          ],
-                        ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.language, size: 32),
+                          const SizedBox(height: 6),
+                          TextButton(
+                            onPressed: _openExternalBrowser,
+                            child: const Text('ওয়েবপেজটি খুলুন'),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -499,15 +467,14 @@ class _NoteEditorPageState extends State<NoteEditorPage>
                     onVerticalDragUpdate: (details) {
                       setState(() {
                         _webPanelHeight = (_webPanelHeight + details.delta.dy)
-                            .clamp(120.0, 450.0);
+                            .clamp(100.0, 400.0);
                       });
                     },
                     child: Container(
                       color: Colors.transparent,
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: const Icon(Icons.drag_handle,
-                          size: 16, color: Colors.black45),
+                      child: const Icon(Icons.drag_handle, size: 16),
                     ),
                   ),
                 ],
@@ -634,4 +601,4 @@ class _NoteEditorPageState extends State<NoteEditorPage>
       ),
     );
   }
-}
+}   
