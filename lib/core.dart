@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -198,19 +199,29 @@ class Notifs {
     );
   }
 
-  static Future<void> scheduleTimerEnd(Duration d) async {
+  /// টাইমার শেষে ফোনের অ্যালার্ম-রিং ও/বা ভাইব্রেশন (আওয়াজ ৬০ সেকেন্ড বা বন্ধ না করা পর্যন্ত)
+  static Future<void> scheduleTimerEnd(Duration d,
+      {bool ring = true, bool vibrate = true}) async {
     if (!ready) return;
     final when = tz.TZDateTime.from(DateTime.now().add(d), tz.UTC);
-    const details = NotificationDetails(
+    final details = NotificationDetails(
       android: AndroidNotificationDetails(
-        'timer_end',
+        'timer_end_${ring ? 1 : 0}${vibrate ? 1 : 0}',
         'টাইমার শেষ',
-        channelDescription: 'টাইমারের সময় শেষ হলে জানায়',
+        channelDescription: 'টাইমারের সময় শেষ হলে রিং বা ভাইব্রেট করে',
         importance: Importance.max,
         priority: Priority.max,
-        playSound: true,
-        enableVibration: true,
+        playSound: ring,
+        sound: ring
+            ? UriAndroidNotificationSound('content://settings/system/alarm_alert')
+            : null,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
+        enableVibration: vibrate,
+        vibrationPattern:
+            vibrate ? Int64List.fromList(<int>[0, 900, 400, 900, 400, 900]) : null,
         category: AndroidNotificationCategory.alarm,
+        additionalFlags: Int32List.fromList(<int>[4]),
+        timeoutAfter: 60000,
       ),
     );
     try {
@@ -238,6 +249,76 @@ class Notifs {
         );
       } catch (_) {}
     }
+  }
+
+  static int _stableHash(String s) {
+    int h = 7;
+    for (final c in s.codeUnits) {
+      h = (h * 31 + c) & 0x7FFFFFFF;
+    }
+    return h;
+  }
+
+  /// প্রতিটি কাউন্টডাউনের জন্য দিনে একবার রিমাইন্ডার (পরের ৩০ দিন আগে থেকে সাজানো,
+  /// অ্যাপ খুললে বা কাউন্টডাউন বদলালে নতুন করে সাজানো হয়)
+  static Future<void> rescheduleCountdownReminders() async {
+    if (!ready) return;
+    try {
+      // আগের কাউন্টডাউন-রিমাইন্ডার মুছি (আইডি ১০০০০০ থেকে ৩০০০০০০)
+      final pending = await notifPlugin.pendingNotificationRequests();
+      for (final r in pending) {
+        if (r.id >= 100000 && r.id < 3000000) {
+          await notifPlugin.cancel(r.id);
+        }
+      }
+
+      final sp = Store.prefs;
+      if (!(sp.getBool('cd_remind_on') ?? true)) return;
+      final hour = sp.getInt('cd_remind_h') ?? 9;
+      final minute = sp.getInt('cd_remind_m') ?? 0;
+
+      final items = Store.readList('countdown_items')
+          .map((e) => CountdownItem.fromJson(e))
+          .toList();
+      final now = DateTime.now();
+      const details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          'cd_reminder',
+          'কাউন্টডাউন রিমাইন্ডার',
+          channelDescription: 'প্রতিদিন একবার কাউন্টডাউনের কথা মনে করায়',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      );
+
+      int total = 0;
+      for (final it in items) {
+        final base = 100000 + (_stableHash(it.id) % 50000) * 40;
+        final targetDay =
+            DateTime.utc(it.target.year, it.target.month, it.target.day);
+        for (int i = 0; i < 30 && total < 300; i++) {
+          final fire = DateTime(now.year, now.month, now.day + i, hour, minute);
+          if (!fire.isAfter(now.add(const Duration(seconds: 30)))) continue;
+          if (fire.isAfter(it.target)) break;
+          final fireDay = DateTime.utc(fire.year, fire.month, fire.day);
+          final left = targetDay.difference(fireDay).inDays;
+          final body = left <= 0
+              ? '“${it.name}” — আজই সেই দিন! ⏰'
+              : '“${it.name}” — আর $left দিন বাকি';
+          await notifPlugin.zonedSchedule(
+            base + i,
+            '⏳ কাউন্টডাউন রিমাইন্ডার',
+            body,
+            tz.TZDateTime.from(fire, tz.UTC),
+            details,
+            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+            uiLocalNotificationDateInterpretation:
+                UILocalNotificationDateInterpretation.absoluteTime,
+          );
+          total++;
+        }
+      }
+    } catch (_) {}
   }
 
   static Future<void> cancelTimerEnd() async {
