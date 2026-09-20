@@ -209,7 +209,7 @@ class _NotesPageState extends State<NotesPage> {
 }
 
 // ---------------------------------------------------------------
-// নোট লেখার পাতা (সার্চ বার ও ইন-অ্যাপ ব্রাউজার সহ)
+// নোট লেখার পাতা (সার্চ বার ও রিসাইজেবল এডিটর সহ)
 // ---------------------------------------------------------------
 class NoteEditorPage extends StatefulWidget {
   final Note note;
@@ -236,7 +236,7 @@ class _NoteEditorPageState extends State<NoteEditorPage>
       TextEditingController(text: widget.note.body);
   final TextEditingController _searchCtrl = TextEditingController();
   Timer? _debounce;
-  double _editorHeightRatio = 0.6; // সাইজ এডজাস্ট করার অনুপাত
+  double _editorHeight = 240.0; // নোট এডিটরের ডিফল্ট উচ্চতা
 
   @override
   void initState() {
@@ -279,17 +279,11 @@ class _NoteEditorPageState extends State<NoteEditorPage>
         'https://www.google.com/search?q=${Uri.encodeComponent(query)}');
 
     try {
-      final launched = await launchUrl(
-        searchUrl,
-        mode: LaunchMode.inAppWebView,
-      );
-      if (!launched) {
-        await launchUrl(searchUrl, mode: LaunchMode.externalApplication);
-      }
+      await launchUrl(searchUrl, mode: LaunchMode.externalApplication);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ইন্টারনেট বা ব্রাউজার খোলা যায়নি')),
+        const SnackBar(content: Text('ব্রাউজার খোলা যায়নি')),
       );
     }
   }
@@ -344,7 +338,7 @@ class _NoteEditorPageState extends State<NoteEditorPage>
 
   Future<void> _openLink(NoteLink l) async {
     try {
-      await launchUrl(Uri.parse(l.url), mode: LaunchMode.inAppBrowserView);
+      await launchUrl(Uri.parse(l.url), mode: LaunchMode.externalApplication);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -376,9 +370,6 @@ class _NoteEditorPageState extends State<NoteEditorPage>
 
   @override
   Widget build(BuildContext context) {
-    final mediaQuery = MediaQuery.of(context);
-    final totalHeight = mediaQuery.size.height;
-
     return PoleScaffold(
       title: 'Note',
       icon: const Icon(Icons.edit_note),
@@ -401,156 +392,155 @@ class _NoteEditorPageState extends State<NoteEditorPage>
           ],
         ),
       ],
-      body: Column(
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 60),
         children: [
-          // ---------------- ইন-অ্যাপ গুগল সার্চ বার ----------------
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: Container(
-              padding: const EdgeInsets.horizontal(12),
-              decoration: cardDecoration(),
-              child: Row(
-                children: [
-                  const Icon(Icons.search, color: Colors.black54),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _searchCtrl,
-                      textInputAction: TextInputAction.search,
-                      onSubmitted: (_) => _performSearch(),
-                      decoration: const InputDecoration(
-                        hintText: 'ইন্টারনেটে সার্চ করো...',
-                        border: InputBorder.none,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.arrow_forward),
-                    onPressed: _performSearch,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // ---------------- সাইজ এডজাস্টমেন্ট বার ----------------
-          GestureDetector(
-            onVerticalDragUpdate: (details) {
-              setState(() {
-                _editorHeightRatio += details.primaryDelta! / totalHeight;
-                _editorHeightRatio = _editorHeightRatio.clamp(0.2, 0.85);
-              });
-            },
-            child: Container(
-              height: 18,
-              width: double.infinity,
-              color: Colors.transparent,
-              child: Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.black38,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // ---------------- নোট লেখার এরিয়া (ডাইনামিক হাইট) ----------------
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 60),
+          // ---------------- গুগল সার্চ বার ----------------
+          Container(
+            padding: const EdgeInsets.horizontal(12),
+            decoration: cardDecoration(),
+            child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: cardDecoration(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      TextField(
-                        controller: _title,
-                        style: const TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.w700),
-                        decoration: const InputDecoration(
-                          hintText: 'শিরোনাম',
-                          border: InputBorder.none,
-                        ),
-                        onChanged: (v) {
-                          note.title = v;
-                          _touch();
-                        },
-                      ),
-                      const Divider(),
-                      TextField(
-                        controller: _body,
-                        minLines: 6,
-                        maxLines: null,
-                        decoration: const InputDecoration(
-                          hintText: 'এখানে লেখো বা কপি করা লেখা পেস্ট করো...',
-                          border: InputBorder.none,
-                        ),
-                        onChanged: (v) {
-                          note.body = v;
-                          _touch();
-                        },
-                      ),
-                    ],
+                const Icon(Icons.search, color: Colors.black54),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _searchCtrl,
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => _performSearch(),
+                    decoration: const InputDecoration(
+                      hintText: 'ইন্টারনেটে সার্চ করো...',
+                      border: InputBorder.none,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text('সেভ করা লিংক',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w700)),
-                    ),
-                    TextButton.icon(
-                      style:
-                          TextButton.styleFrom(foregroundColor: Colors.black),
-                      onPressed: _addLink,
-                      icon: const Icon(Icons.add_link),
-                      label: const Text('লিংক যোগ করো'),
-                    ),
-                  ],
+                IconButton(
+                  icon: const Icon(Icons.arrow_forward),
+                  onPressed: _performSearch,
                 ),
-                if (note.links.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text('কোনো লিংক সেভ করা নেই',
-                        style: TextStyle(color: Colors.black54)),
-                  )
-                else
-                  for (final l in note.links)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      decoration: cardDecoration(),
-                      child: ListTile(
-                        leading: const Icon(Icons.link),
-                        title: Text(
-                          l.title.isEmpty ? l.url : l.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: l.title.isEmpty
-                            ? null
-                            : Text(l.url,
-                                maxLines: 1, overflow: TextOverflow.ellipsis),
-                        onTap: () => _openLink(l),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () {
-                            setState(() => note.links.remove(l));
-                            widget.onSave();
-                          },
-                        ),
-                      ),
-                    ),
               ],
             ),
           ),
+          const SizedBox(height: 12),
+
+          // ---------------- নোট বক্স (সাইজ ছোট-বড় করার ড্র্যাগ বার সহ) ----------------
+          Container(
+            decoration: cardDecoration(),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: TextField(
+                    controller: _title,
+                    style: const TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.w700),
+                    decoration: const InputDecoration(
+                      hintText: 'শিরোনাম',
+                      border: InputBorder.none,
+                    ),
+                    onChanged: (v) {
+                      note.title = v;
+                      _touch();
+                    },
+                  ),
+                ),
+                const Divider(height: 1),
+                SizedBox(
+                  height: _editorHeight,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: TextField(
+                      controller: _body,
+                      maxLines: null,
+                      expands: true,
+                      textAlignVertical: TextAlignVertical.top,
+                      decoration: const InputDecoration(
+                        hintText: 'এখানে লেখো বা কপি করা লেখা পেস্ট করো...',
+                        border: InputBorder.none,
+                      ),
+                      onChanged: (v) {
+                        note.body = v;
+                        _touch();
+                      },
+                    ),
+                  ),
+                ),
+                // টেনে সাইজ ছোট বা বড় করার অংশ
+                GestureDetector(
+                  onVerticalDragUpdate: (details) {
+                    setState(() {
+                      _editorHeight += details.delta.dy;
+                      if (_editorHeight < 120) _editorHeight = 120;
+                      if (_editorHeight > 550) _editorHeight = 550;
+                    });
+                  },
+                  child: Container(
+                    height: 20,
+                    width: double.infinity,
+                    color: Colors.transparent,
+                    child: Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[400],
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ---------------- লিংক অপশন ----------------
+          Row(
+            children: [
+              const Expanded(
+                child: Text('সেভ করা লিংক',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              ),
+              TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: Colors.black),
+                onPressed: _addLink,
+                icon: const Icon(Icons.add_link),
+                label: const Text('লিংক যোগ করো'),
+              ),
+            ],
+          ),
+          if (note.links.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('কোনো লিংক সেভ করা নেই',
+                  style: TextStyle(color: Colors.black54)),
+            )
+          else
+            for (final l in note.links)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: cardDecoration(),
+                child: ListTile(
+                  leading: const Icon(Icons.link),
+                  title: Text(
+                    l.title.isEmpty ? l.url : l.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: l.title.isEmpty
+                      ? null
+                      : Text(l.url, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  onTap: () => _openLink(l),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () {
+                      setState(() => note.links.remove(l));
+                      widget.onSave();
+                    },
+                  ),
+                ),
+              ),
         ],
       ),
     );
