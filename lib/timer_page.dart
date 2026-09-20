@@ -40,16 +40,18 @@ class TimerPage extends StatefulWidget {
 class _TimerPageState extends State<TimerPage> {
   static const _cdKey = 'countdowns_v1';
 
-  int _selectedTab = 0; // 0: Stopwatch, 1: Timer, 2: Countdown
+  int _selectedTopTab = 0; // 0: Stopwatch, 1: Timer
 
   // Stopwatch
-  Stopwatch _stopwatch = Stopwatch();
+  final Stopwatch _stopwatch = Stopwatch();
   Timer? _swTimer;
 
   // Timer
   int _timerSeconds = 0;
-  int _initialTimerSeconds = 0;
+  bool _isTimerRunning = false;
   Timer? _cdTimer;
+  final TextEditingController _minCtrl = TextEditingController();
+  final TextEditingController _secCtrl = TextEditingController();
 
   // Countdowns
   List<CountdownItem> _countdowns = [];
@@ -69,6 +71,8 @@ class _TimerPageState extends State<TimerPage> {
     _swTimer?.cancel();
     _cdTimer?.cancel();
     _uiUpdateTimer?.cancel();
+    _minCtrl.dispose();
+    _secCtrl.dispose();
     super.dispose();
   }
 
@@ -105,11 +109,17 @@ class _TimerPageState extends State<TimerPage> {
   }
 
   // ------------ Timer Logics ------------
-  void _startTimer(int seconds) {
+  void _startCustomTimer() {
+    final mins = int.tryParse(_minCtrl.text.trim()) ?? 0;
+    final secs = int.tryParse(_secCtrl.text.trim()) ?? 0;
+    final totalSecs = (mins * 60) + secs;
+
+    if (totalSecs <= 0) return;
+
     _cdTimer?.cancel();
     setState(() {
-      _initialTimerSeconds = seconds;
-      _timerSeconds = seconds;
+      _timerSeconds = totalSecs;
+      _isTimerRunning = true;
     });
 
     _cdTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -117,19 +127,41 @@ class _TimerPageState extends State<TimerPage> {
         setState(() => _timerSeconds--);
       } else {
         timer.cancel();
+        setState(() => _isTimerRunning = false);
       }
     });
+  }
+
+  void _toggleTimer() {
+    if (_isTimerRunning) {
+      _cdTimer?.cancel();
+      setState(() => _isTimerRunning = false);
+    } else {
+      if (_timerSeconds > 0) {
+        setState(() => _isTimerRunning = true);
+        _cdTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          if (_timerSeconds > 0) {
+            setState(() => _timerSeconds--);
+          } else {
+            timer.cancel();
+            setState(() => _isTimerRunning = false);
+          }
+        });
+      }
+    }
   }
 
   void _resetTimer() {
     _cdTimer?.cancel();
     setState(() {
       _timerSeconds = 0;
-      _initialTimerSeconds = 0;
+      _isTimerRunning = false;
+      _minCtrl.clear();
+      _secCtrl.clear();
     });
   }
 
-  // ------------ Countdown Dialog (Fix Added Here) ------------
+  // ------------ Countdown Dialog ------------
   void _addCountdownDialog() {
     final titleCtrl = TextEditingController();
     DateTime? selectedDateTime;
@@ -186,14 +218,16 @@ class _TimerPageState extends State<TimerPage> {
                           onPressed: () async {
                             final date = await showDatePicker(
                               context: context,
-                              initialDate: DateTime.now().add(const Duration(days: 1)),
+                              initialDate:
+                                  DateTime.now().add(const Duration(days: 1)),
                               firstDate: DateTime.now(),
                               lastDate: DateTime(2035),
                             );
                             if (date != null && context.mounted) {
                               final time = await showTimePicker(
                                 context: context,
-                                initialTime: const TimeOfDay(hour: 0, minute: 0),
+                                initialTime:
+                                    const TimeOfDay(hour: 0, minute: 0),
                               );
                               if (time != null) {
                                 setDialogState(() {
@@ -217,7 +251,8 @@ class _TimerPageState extends State<TimerPage> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('বাতিল', style: TextStyle(color: Colors.grey)),
+                  child:
+                      const Text('বাতিল', style: TextStyle(color: Colors.grey)),
                 ),
                 TextButton(
                   onPressed: () {
@@ -269,67 +304,82 @@ class _TimerPageState extends State<TimerPage> {
     return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
 
+  String _formatTargetDate(DateTime dt) {
+    final dateStr = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+    final period = dt.hour >= 12 ? 'PM' : 'AM';
+    final hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final timeStr = '${hour12.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} $period';
+    return '$dateStr | $timeStr';
+  }
+
   @override
   Widget build(BuildContext context) {
     return PoleScaffold(
       title: 'Timer',
       icon: const Icon(Icons.timer_outlined),
       gradient: _kTimerGradient,
-      fab: _selectedTab == 2
-          ? FloatingActionButton(
-              backgroundColor: Colors.black,
-              foregroundColor: Colors.white,
-              onPressed: _addCountdownDialog,
-              child: const Icon(Icons.add),
-            )
-          : null,
-      body: Column(
+      fab: FloatingActionButton(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        onPressed: _addCountdownDialog,
+        child: const Icon(Icons.add),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
         children: [
-          const SizedBox(height: 12),
-          // Tab Switches
+          // ---------------- পরিবর্তন ১: উপরের বক্সে স্টপওয়াচ ও টাইমার ----------------
           Container(
-            padding: const EdgeInsets.all(4),
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
+            padding: const EdgeInsets.all(16),
+            decoration: cardDecoration(),
+            child: Column(
               children: [
-                _tabBtn('স্টপওয়াচ', 0),
-                _tabBtn('টাইমার', 1),
-                _tabBtn('কাউন্টডাউন', 2),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
+                // সুইচার (স্টপওয়াচ / টাইমার)
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      _topTabBtn('স্টপওয়াচ', 0),
+                      _topTabBtn('টাইমার', 1),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
 
-          // Main Tab Body
-          Expanded(
-            child: IndexedStack(
-              index: _selectedTab,
-              children: [
-                _buildStopwatchUI(),
-                _buildTimerUI(),
-                _buildCountdownUI(),
+                // স্টপওয়াচ বা টাইমারের কনটেন্ট
+                _selectedTopTab == 0
+                    ? _buildStopwatchContent()
+                    : _buildTimerContent(),
               ],
             ),
           ),
+          const SizedBox(height: 24),
+
+          // ---------------- পরিবর্তন ২: নিচে কাউন্টডাউন পোল তালিকা ----------------
+          const Text(
+            'কাউন্টডাউন',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          _buildCountdownUI(),
         ],
       ),
     );
   }
 
-  Widget _tabBtn(String label, int index) {
-    final active = _selectedTab == index;
+  Widget _topTabBtn(String label, int index) {
+    final active = _selectedTopTab == index;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _selectedTab = index),
+        onTap: () => setState(() => _selectedTopTab = index),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
             color: active ? Colors.black : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
           ),
           child: Text(
             label,
@@ -344,16 +394,15 @@ class _TimerPageState extends State<TimerPage> {
     );
   }
 
-  // 1. Stopwatch Page
-  Widget _buildStopwatchUI() {
+  // বক্সে স্টপওয়াচ
+  Widget _buildStopwatchContent() {
     return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
           _formatStopwatch(_stopwatch.elapsedMilliseconds),
-          style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
+          style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
         ),
-        const SizedBox(height: 40),
+        const SizedBox(height: 20),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -362,20 +411,20 @@ class _TimerPageState extends State<TimerPage> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.black,
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
               child: Text(_stopwatch.isRunning ? 'থামাও' : 'শুরু করো',
-                  style: const TextStyle(color: Colors.white, fontSize: 16)),
+                  style: const TextStyle(color: Colors.white, fontSize: 15)),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             OutlinedButton(
               onPressed: _resetStopwatch,
               style: OutlinedButton.styleFrom(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               ),
               child: const Text('রিসেট',
-                  style: TextStyle(color: Colors.black, fontSize: 16)),
+                  style: TextStyle(color: Colors.black, fontSize: 15)),
             ),
           ],
         ),
@@ -383,63 +432,107 @@ class _TimerPageState extends State<TimerPage> {
     );
   }
 
-  // 2. Timer Page
-  Widget _buildTimerUI() {
+  // বক্সে টাইমার (ইচ্ছামত টাইপ করা যাবে)
+  Widget _buildTimerContent() {
     return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
           _formatTimer(_timerSeconds),
-          style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
+          style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
         ),
-        const SizedBox(height: 30),
-        if (_initialTimerSeconds == 0)
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            alignment: WrapAlignment.center,
-            children: [
-              _presetBtn(1),
-              _presetBtn(5),
-              _presetBtn(10),
-              _presetBtn(15),
-              _presetBtn(30),
-            ],
-          )
-        else
+        const SizedBox(height: 16),
+        if (!_isTimerRunning && _timerSeconds == 0) ...[
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              OutlinedButton(
-                onPressed: _resetTimer,
-                child: const Text('রিসেট', style: TextStyle(color: Colors.black)),
+              SizedBox(
+                width: 70,
+                child: TextField(
+                  controller: _minCtrl,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  decoration: const InputDecoration(
+                    hintText: 'মিনিট',
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(vertical: 8),
+                  ),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Text(':',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              ),
+              SizedBox(
+                width: 70,
+                child: TextField(
+                  controller: _secCtrl,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  decoration: const InputDecoration(
+                    hintText: 'সেকেন্ড',
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(vertical: 8),
+                  ),
+                ),
               ),
             ],
           ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: _startCustomTimer,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+            ),
+            child: const Text('স্টার্ট',
+                style: TextStyle(color: Colors.white, fontSize: 15)),
+          ),
+        ] else ...[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ElevatedButton(
+                onPressed: _toggleTimer,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                child: Text(_isTimerRunning ? 'পজ' : 'চালু করো',
+                    style: const TextStyle(color: Colors.white, fontSize: 15)),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton(
+                onPressed: _resetTimer,
+                style: OutlinedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
+                child: const Text('রিসেট',
+                    style: TextStyle(color: Colors.black, fontSize: 15)),
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }
 
-  Widget _presetBtn(int mins) {
-    return ActionChip(
-      label: Text('$mins মি'),
-      onPressed: () => _startTimer(mins * 60),
-    );
-  }
-
-  // 3. Countdown List Page
+  // কাউন্টডাউন পোল তালিকা
   Widget _buildCountdownUI() {
     if (_countdowns.isEmpty) {
-      return const Center(
-        child: Text('কোনো কাউন্টডাউন নেই, নিচে + চেপে তৈরি করো',
-            style: TextStyle(color: Colors.black54)),
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Center(
+          child: Text('কোনো কাউন্টডাউন নেই, নিচে + চেপে তৈরি করো',
+              style: TextStyle(color: Colors.black54)),
+        ),
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _countdowns.length,
-      itemBuilder: (_, i) {
+    return Column(
+      children: List.generate(_countdowns.length, (i) {
         final item = _countdowns[i];
         final diff = item.targetDate.difference(DateTime.now());
         final isPassed = diff.isNegative;
@@ -453,43 +546,64 @@ class _TimerPageState extends State<TimerPage> {
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(16),
           decoration: cardDecoration(),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.title,
-                      style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.bold),
+              // ইভেন্টের তারিখ ও সময় (উপরে)
+              Row(
+                children: [
+                  const Icon(Icons.event, size: 16, color: Colors.black54),
+                  const SizedBox(width: 6),
+                  Text(
+                    _formatTargetDate(item.targetDate),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black54,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      isPassed
-                          ? 'সময় পার হয়ে গেছে!'
-                          : '$days দিন $hours ঘণ্টা $mins মিনিট $secs সেকেন্ড বাকি',
-                      style: TextStyle(
-                        color: isPassed ? Colors.red : Colors.black87,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline),
-                onPressed: () {
-                  setState(() {
-                    _countdowns.removeAt(i);
-                    _saveCountdowns();
-                  });
-                },
+              const Divider(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.title,
+                          style: const TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          isPassed
+                              ? 'সময় পার হয়ে গেছে!'
+                              : '$days দিন $hours ঘণ্টা $mins মিনিট $secs সেকেন্ড বাকি',
+                          style: TextStyle(
+                            color: isPassed ? Colors.red : Colors.black87,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () {
+                      setState(() {
+                        _countdowns.removeAt(i);
+                        _saveCountdowns();
+                      });
+                    },
+                  ),
+                ],
               ),
             ],
           ),
         );
-      },
+      }),
     );
   }
 }
