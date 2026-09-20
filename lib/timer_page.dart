@@ -1,4 +1,4 @@
-import 'dart:async';
+     import 'dart:async';
 
 import 'package:flutter/cupertino.dart'
     show CupertinoTimerPicker, CupertinoTimerPickerMode;
@@ -305,16 +305,24 @@ class _TimerPageState extends State<TimerPage> {
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAlignment.stretch,
               children: [
                 TextField(
                   controller: nameCtrl,
                   decoration: const InputDecoration(
                     labelText: 'নাম (যেমন: ভর্তি পরীক্ষা)',
+                    border: OutlineInputBorder(),
                   ),
                 ),
-                const SizedBox(height: 16),
-                OutlinedButton(
-                  style: outlineButton(),
+                const SizedBox(height: 12),
+                
+                // তারিখ বাছাই করার বাটন
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                    alignment: Alignment.centerLeft,
+                  ),
+                  icon: const Icon(Icons.calendar_today, size: 18),
                   onPressed: () async {
                     final d = await showDatePicker(
                       context: ctx,
@@ -324,22 +332,42 @@ class _TimerPageState extends State<TimerPage> {
                     );
                     if (d != null) setD(() => date = d);
                   },
-                  child: Text(date == null ? 'তারিখ বাছাই করো' : fmtDate(date!)),
+                  label: Text(
+                    date == null
+                        ? 'তারিখ বাছাই করো'
+                        : '${date!.day}/${date!.month}/${date!.year}',
+                    style: const TextStyle(fontSize: 14, color: Colors.black87),
+                  ),
                 ),
-                OutlinedButton(
-                  style: outlineButton(),
+                const SizedBox(height: 10),
+                
+                // সময় বাছাই করার বাটন
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                    alignment: Alignment.centerLeft,
+                  ),
+                  icon: const Icon(Icons.access_time, size: 18),
                   onPressed: () async {
-                    final t =
-                        await showTimePicker(context: ctx, initialTime: time);
+                    final t = await showTimePicker(
+                      context: ctx,
+                      initialTime: time,
+                    );
                     if (t != null) setD(() => time = t);
                   },
-                  child: Text('সময়: ${fmtTime(time.hour, time.minute)}'),
+                  label: Text(
+                    'সময়: ${time.format(ctx)}',
+                    style: const TextStyle(fontSize: 14, color: Colors.black87),
+                  ),
                 ),
+                
                 if (error != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
-                    child: Text(error!,
-                        style: const TextStyle(color: Colors.red)),
+                    child: Text(
+                      error!,
+                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                    ),
                   ),
               ],
             ),
@@ -349,14 +377,23 @@ class _TimerPageState extends State<TimerPage> {
               onPressed: () => Navigator.pop(ctx),
               child: const Text('বাতিল'),
             ),
-            TextButton(
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.black,
+                foregroundColor: Colors.white,
+              ),
               onPressed: () {
                 if (nameCtrl.text.trim().isEmpty || date == null) {
                   setD(() => error = 'নাম ও তারিখ দুটোই দিতে হবে');
                   return;
                 }
-                final target = DateTime(date!.year, date!.month, date!.day,
-                    time.hour, time.minute);
+                final target = DateTime(
+                  date!.year,
+                  date!.month,
+                  date!.day,
+                  time.hour,
+                  time.minute,
+                );
                 setState(() {
                   items.add(CountdownItem(
                     id: newId(),
@@ -517,4 +554,4 @@ class _TimerPageState extends State<TimerPage> {
       ),
     );
   }
-}
+}                                         
