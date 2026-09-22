@@ -5,6 +5,7 @@ import 'core.dart';
 import 'notes_page.dart';
 import 'routine_page.dart';
 import 'timer_page.dart';
+import 'widget_bridge.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,6 +20,7 @@ Future<void> main() async {
   }
   // অ্যাপ খুললেই কাউন্টডাউনের প্রতিদিনের রিমাইন্ডার নতুন করে সাজানো হয়
   await Notifs.rescheduleCountdownReminders();
+  await WidgetBridge.update();
 }
 
 class AspirantsApp extends StatelessWidget {
