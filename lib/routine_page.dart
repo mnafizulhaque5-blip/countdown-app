@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'art.dart';
 import 'core.dart';
+import 'widget_bridge.dart';
 
 const List<Color> _kRoutineGradient = [Color(0xFFFFF4EC), Color(0xFFFFE9EE)];
 
@@ -18,6 +19,8 @@ class RoutinePlanPage extends StatefulWidget {
 class _RoutinePlanPageState extends State<RoutinePlanPage>
     with WidgetsBindingObserver {
   List<RpItem> items = [];
+  bool _widgetOn = true;
+  bool _pinning = false;
 
   @override
   void initState() {
@@ -25,6 +28,8 @@ class _RoutinePlanPageState extends State<RoutinePlanPage>
     WidgetsBinding.instance.addObserver(this);
     items = maintainRp(loadRp());
     saveRp(items);
+    _widgetOn = Store.prefs.getBool('widget_enabled') ?? true;
+    WidgetBridge.update();
   }
 
   @override
@@ -38,11 +43,15 @@ class _RoutinePlanPageState extends State<RoutinePlanPage>
     if (state == AppLifecycleState.resumed) {
       final kept = maintainRp(items);
       saveRp(kept);
+      WidgetBridge.update();
       if (mounted) setState(() => items = kept);
     }
   }
 
-  Future<void> _persist() => saveRp(items);
+  Future<void> _persist() async {
+    await saveRp(items);
+    await WidgetBridge.update();
+  }
 
   List<RpItem> get _sorted {
     final r = items.where((e) => e.isRoutine).toList();
@@ -61,6 +70,7 @@ class _RoutinePlanPageState extends State<RoutinePlanPage>
   void _remove(RpItem it) {
     items.removeWhere((e) => e.id == it.id);
     saveRp(items);
+    WidgetBridge.update();
   }
 
   void _open(RpItem it) {
@@ -210,6 +220,7 @@ class _RoutinePlanPageState extends State<RoutinePlanPage>
                 );
                 setState(() => items.add(it));
                 saveRp(items);
+                WidgetBridge.update();
                 Navigator.pop(ctx);
               },
               child: const Text('তৈরি করো'),
@@ -310,6 +321,68 @@ class _RoutinePlanPageState extends State<RoutinePlanPage>
     );
   }
 
+
+  void _toggleWidget(bool v) {
+    setState(() => _widgetOn = v);
+    Store.prefs.setBool('widget_enabled', v);
+    WidgetBridge.update();
+  }
+
+  Future<void> _addToHomeScreen() async {
+    setState(() => _pinning = true);
+    final ok = await WidgetBridge.requestPin();
+    if (mounted) setState(() => _pinning = false);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok
+            ? 'হোম স্ক্রিনে উইজেট বসানোর অনুরোধ পাঠানো হয়েছে'
+            : 'এই ফোনে সরাসরি বসানো গেল না — হোম স্ক্রিনে খালি জায়গায় দীর্ঘক্ষণ চেপে Widgets থেকে Aspirants বেছে নাও'),
+      ),
+    );
+  }
+
+  Widget _widgetSettingsCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.widgets_outlined, size: 22),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text('হোম স্ক্রিন উইজেট',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              ),
+              Switch(value: _widgetOn, onChanged: _toggleWidget),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'বন্ধ থাকলে উইজেটে শুধু "উইজেট বন্ধ আছে" দেখাবে। উইজেটের ভিতরের ⇄ চেপে রুটিন ও প্ল্যানের মধ্যে বদলানো যায়।',
+            style: TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            style: outlineButton(),
+            onPressed: _widgetOn && !_pinning ? _addToHomeScreen : null,
+            icon: _pinning
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.add_to_home_screen, size: 18),
+            label: const Text('হোম স্ক্রিনে উইজেট যোগ করো'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final list = _sorted;
@@ -323,23 +396,25 @@ class _RoutinePlanPageState extends State<RoutinePlanPage>
         onPressed: _addPoll,
         child: const Icon(Icons.add),
       ),
-      body: list.isEmpty
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+        children: [
+          _widgetSettingsCard(),
+          if (list.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(
                 child: Text(
                   'নিচের + চেপে রুটিন বা প্ল্যান বানাও',
                   style: TextStyle(color: Colors.black54),
                 ),
               ),
             )
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-              children: [
-                for (final it in list)
-                  it.isRoutine ? _routineCard(it) : _planCard(it),
-              ],
-            ),
+          else
+            for (final it in list)
+              it.isRoutine ? _routineCard(it) : _planCard(it),
+        ],
+      ),
     );
   }
 }
